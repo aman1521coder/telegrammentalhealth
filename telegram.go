@@ -210,19 +210,16 @@ func RouteMessage(msg *Message) error {
 	if !ok || !s.active {
 		return fmt.Errorf(" something issue while sending message")
 	}
-	err := SendMessage(context.Background(), int64(s.expert.ID), msg.Text, token)
+	err := SendMessage(context.Background(), s.expert.ChatID, msg.Text, token)
 	if err != nil {
 		return fmt.Errorf("something  is wrong while routing message to expert : %v", err)
 	}
 
-	e, ok := expertSessions[msg.Chat.ID]
-	if !ok || !e.active {
-		return fmt.Errorf("something issue while sending message")
-	}
-	err = SendMessage(context.Background(), int64(e.user.ID), msg.Text, token)
-	if err != nil {
-		return fmt.Errorf("something  is wrong while routing message to user : %v", err)
-	}
+    if s.expert.ID == msg.From.ID {
+        if err := SendMessage(context.Background(), s.user.ID, msg.Text, token); err != nil {
+            return fmt.Errorf("error sending message to user: %v", err)
+        }
+    }
 	return nil
 
 }
