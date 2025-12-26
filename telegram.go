@@ -2,9 +2,11 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
-	"net/http"
 	"context"
+	"encoding/json"
+	"log"
+	"net/http"
+
 	//"errors"
 	"fmt"
 )
@@ -157,6 +159,22 @@ func GetUpdates(ctx context.Context ,token string   ,update chan<- *Update) erro
 						continue
 					}
 					SendMessage(context.Background(),updateChan.Message.Chat.ID,"finding experts",token)
+				s,err:=StartSession(updateChan.Message.From)
+				if err!=nil{
+					SendMessage(context.Background(),updateChan.Message.Chat.ID,"something went wrong while starting session",token)
+					continue
+				}
+				if s !=nil{
+					SendMessage(context.Background(),updateChan.Message.Chat.ID,"session starte now you are taking  to an expert",token)
+					log.Printf("session started with id %s for user %d with an expert %d",s.ID,updateChan.Message.From.ID,s.expert.ID)
+				}
+				if updateChan.Message.Text=="/end"{
+					err=EndSession(updateChan.Message.From.ID)
+					if err!=nil{
+						SendMessage(context.Background(),updateChan.Message.Chat.ID,"something went wrong while ending session",token)
+						continue
+					}
+					SendMessage(context.Background(),updateChan.Message.Chat.ID,"session ended",token)
 				}
 				if updateChan.Message.Text=="/help"{
 					if updateChan.Message.From.IsBot{
@@ -167,8 +185,10 @@ func GetUpdates(ctx context.Context ,token string   ,update chan<- *Update) erro
 			
 			}
 		}
-		return nil
 	}
+		return  nil
+	}
+
 
 func RouteMessage(msg *Message) error{
 	mu.Lock()

@@ -19,7 +19,8 @@ user *User
 active bool 
 }
 type Expert struct{
-	ID int 
+	ID int64
+
 	Available bool
 }
 var (
@@ -29,7 +30,7 @@ var (
     {ID: 2, Available: true},
     {ID: 3, Available: true},
 }
-sessions = make(map[string]*Session)
+sessionsByID= make(map[string]*Session)
     userSessions   = make(map[int64]*Session) // Telegram user ID → session
     expertSessions = make(map[int64]*Session) // Expert chat ID → session
 
@@ -51,35 +52,48 @@ func StartSession(user *User )(*Session,error){
 	if user.IsBot{
 		return nil,errors.New("bots are not allowed to start a session")
 	}
-	s:=&Session{}
+
+	if _, exists := userSessions[user.ID]; exists {
+    return nil, errors.New("user already has an active session")
+}
+
+
 	for _,e:=range Experts{
 		if e.IsAvailable(){
-			s.ID=uuid.NewString()
-			e.Available=false
-			s.expert=e
-			s.user=user
-			s.active=true
-			log.Print("session started")
-			sessions[s.ID]=s
-			return s,nil
+		e.Available=false
+			s:=&Session{
+				ID: uuid.NewString(),
+				expert: e,
+				user: user,
+				active: true,
+			}
+			userSessions[user.ID]=s
+			expertSessions[e.ID]=s
+		     sessionsByID[s.ID] = s
+
+            log.Println("session started:", s.ID)
+            return s, nil
 		}
 	}
 	return nil,errors.New("no vaialable expert at the moment please try again after sonme time")
 }
-func EndSession(sessionID string) error{
+func EndSession(userId int64) error{
 	
 	mu.Lock()
 	defer mu.Unlock()
 
-	s, ok := sessions[sessionID]
+	s, ok := userSessions[userId]
 	if !ok {
 		return errors.New("the session is not availavble")
 	}
+	sessionID := s.ID
 
 	s.expert.Available = true
 	s.active = false
 
-	delete(sessions, sessionID)
+    delete(userSessions, s.user.ID)
+    delete(expertSessions, s.expert.ID)
+    delete(sessionsByID, sessionID)
 	log.Printf("Session %s ended", sessionID)
 	return nil
 	
