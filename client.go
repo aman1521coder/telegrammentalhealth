@@ -4,8 +4,9 @@ import (
 	//"time"
 	//"fmt"
 
+	"context"
 	"errors"
-	
+
 	"log"
 	"sync"
 
@@ -20,15 +21,16 @@ active bool
 }
 type Expert struct{
 	ID int64
+	ChatID  int64
 
 	Available bool
 }
 var (
 
 	Experts = []*Expert{
-    {ID: 1, Available: true},
-    {ID: 2, Available: true},
-    {ID: 3, Available: true},
+    {ID: 1, ChatID: 8190427124, Available: true},
+    //{ID: 2, ChatID: 1002, Available: true},
+    //{ID: 3, ChatID: 1003, Available: true},
 }
 sessionsByID= make(map[string]*Session)
     userSessions   = make(map[int64]*Session) // Telegram user ID → session
@@ -80,7 +82,7 @@ func StartSession(user *User )(*Session,error){
 func EndSession(userId int64) error{
 	
 	mu.Lock()
-	defer mu.Unlock()
+
 
 	s, ok := userSessions[userId]
 	if !ok {
@@ -94,6 +96,10 @@ func EndSession(userId int64) error{
     delete(userSessions, s.user.ID)
     delete(expertSessions, s.expert.ID)
     delete(sessionsByID, sessionID)
+		 	mu.Unlock()
+     _=SendMessage(context.Background(),s.expert.ChatID,"Session ended.",token)
+
+
 	log.Printf("Session %s ended", sessionID)
 	return nil
 	

@@ -4,19 +4,21 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 
 	//"errors"
 	"fmt"
+	//"os"
 )
 
 const (
 	SendMessageMethod = "sendMessage"
 	GetUpdatesMethod  = "getUpdates"
-	token             = "token_here" // token for now is hardcoded
 )
 
+var token = "8411335043:AAHLWnflciTp11AaH9jj8zjCuO5luBCBTZA"
 type APIResponse struct {
 	OK          bool                `json:"ok"`
 	Result      json.RawMessage     `json:"result,omitempty"` // Unmarshal manually based on method
@@ -60,13 +62,14 @@ type GetUpdatesParams struct {
 	Timeout int `json:"timeout,omitempty"`
 }
 
-func CallTelegraMethod(ctx context.Context,method string, params interface{}, token string ) (*APIResponse, error) {
+func CallTelegraMethod(ctx context.Context, method string, params interface{}, token string, httpMethod string) (*APIResponse, error) {
 	url := "https://api.telegram.org/bot" + token + "/" + method
+
 	jsondata, err := json.Marshal(params)
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx,"post", url, bytes.NewBuffer(jsondata))
+	req, err := http.NewRequestWithContext(ctx, httpMethod, url, bytes.NewBuffer(jsondata))
 	if err != nil {
 		return nil, err
 	}
@@ -78,141 +81,148 @@ func CallTelegraMethod(ctx context.Context,method string, params interface{}, to
 	}
 
 	defer resp.Body.Close()
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Println("Raw response:", string(data))
 	var apiResp APIResponse
-	err = json.NewDecoder(resp.Body).Decode(&apiResp)
+	err = json.Unmarshal(data, &apiResp)
 	if err != nil {
 		return nil, err
 	}
 	return &apiResp, nil
 
-	}
-
+}
 
 func SendMessage(ctx context.Context, chatID int64, text string, token string) error {
-params:=SendMessageParams{ChatID: chatID, Text: text}
-resp, err := CallTelegraMethod(ctx, SendMessageMethod, params, token)
-if err != nil {
-	return err
-} 
-if !resp.OK {
-return fmt.Errorf("failed to send message  %d: %s",  resp.ErrorCode, resp.Description)
+	params := SendMessageParams{ChatID: chatID, Text: text}
+	resp, err := CallTelegraMethod(ctx, SendMessageMethod, params, token, "POST")
+	if err != nil {
+		return err
+	}
+	if !resp.OK {
+		return fmt.Errorf("failed to send message  %d: %s", resp.ErrorCode, resp.Description)
 
-}
-return nil
+	}
+	return nil
 }
 
-func GetUpdates(ctx context.Context ,token string   ,update chan<- *Update) error {
-	
-	offset:=0
+func GetUpdates(ctx context.Context, token string, update chan<- *Update) error {
+
+	offset := 0
 	for {
-		params:=GetUpdatesParams{
-			Offset: offset,
+		params := GetUpdatesParams{
+			Offset:  offset,
 			Timeout: 10,
 		}
-		resp,err:=CallTelegraMethod(ctx,GetUpdatesMethod,params,token)
-		if err!=nil{
+		resp, err := CallTelegraMethod(ctx, GetUpdatesMethod, params, token,"GET")
+		if err != nil {
 			return err
 		}
-		if !resp.OK{
-			return fmt.Errorf("failed to send message  %d: %s",  resp.ErrorCode, resp.Description)
+		if !resp.OK {
+			return fmt.Errorf("failed to send message  %d: %s", resp.ErrorCode, resp.Description)
 		}
 
-	   result,err:=Handlresult(GetUpdatesMethod,resp.Result)
-		if err!=nil{
+		result, err := Handlresult(GetUpdatesMethod, resp.Result)
+		if err != nil {
 			return err
 		}
-		for _,u:=range result.([]Update){
-			update<-&u
-			offset=u.UpdateID+1
+		for _, u := range result.([]Update) {
+			update <- &u
+			offset = u.UpdateID + 1
 		}
 
 	}
 
-	
-	}    
-	func Handlresult(method string,resp json.RawMessage)(interface{},error){
-		switch method{
-          case SendMessageMethod:
-		 var msg Message
-		 err:=json.Unmarshal(resp,&msg)
-		 if err!=nil{
-			return nil,err
-		 }
-		 return msg,nil
-		 case GetUpdatesMethod:
+}
+func Handlresult(method string, resp json.RawMessage) (interface{}, error) {
+	switch method {
+	case SendMessageMethod:
+		var msg Message
+		err := json.Unmarshal(resp, &msg)
+		if err != nil {
+			return nil, err
+		}
+		return msg, nil
+	case GetUpdatesMethod:
 		var updates []Update
-		err:=json.Unmarshal(resp,&updates)
-		if err!=nil{
-			return nil,err
+		err := json.Unmarshal(resp, &updates)
+		if err != nil {
+			return nil, err
 		}
-		return updates,nil
-	 default:
-		return nil,fmt.Errorf("unknown method %s",method)
-	 }
-	
+		return updates, nil
+	default:
+		return nil, fmt.Errorf("unknown method %s", method)
 	}
-	func HandleMessages(updateChan <-chan *Update)error{
-		for updateChan:=range updateChan{
-			if updateChan.Message!=nil{
-				if updateChan.Message.Text=="/start"{
-					if updateChan.Message.From.IsBot{
-						continue
-					}
-					SendMessage(context.Background(),updateChan.Message.Chat.ID,"finding experts",token)
-				s,err:=StartSession(updateChan.Message.From)
-				if err!=nil{
-					SendMessage(context.Background(),updateChan.Message.Chat.ID,"something went wrong while starting session",token)
-					continue
-				}
-				if s !=nil{
-					SendMessage(context.Background(),updateChan.Message.Chat.ID,"session starte now you are taking  to an expert",token)
-					log.Printf("session started with id %s for user %d with an expert %d",s.ID,updateChan.Message.From.ID,s.expert.ID)
-				}
-				if updateChan.Message.Text=="/end"{
-					err=EndSession(updateChan.Message.From.ID)
-					if err!=nil{
-						SendMessage(context.Background(),updateChan.Message.Chat.ID,"something went wrong while ending session",token)
-						continue
-					}
-					SendMessage(context.Background(),updateChan.Message.Chat.ID,"session ended",token)
-				}
-				if updateChan.Message.Text=="/help"{
-					if updateChan.Message.From.IsBot{
-						continue
-					}
-					SendMessage(context.Background(),updateChan.Message.Chat.ID,"This is  the bot the ",token)
-				}
-			
+
+}
+func HandleMessages(updateChan <-chan *Update) error {
+	for upd := range updateChan {
+		if upd.Message == nil || upd.Message.From.IsBot {
+			continue
+		}
+
+		msg := upd.Message
+
+		switch msg.Text {
+		case "/start":
+			s, err := StartSession(msg.From)
+			if err != nil {
+				SendMessage(context.Background(), msg.Chat.ID, err.Error(), token)
+				continue
+			}
+			SendMessage(context.Background(), msg.Chat.ID,
+				"Session started. You are now connected to an expert.", token)
+            SendMessage(context.Background(),s.expert.ChatID,"session started",token)
+			log.Printf("Session %s started: user=%d expert=%d",
+				s.ID, s.user.ID, s.expert.ID)
+
+		case "/end":
+			err := EndSession(msg.From.ID)
+			if err != nil {
+				SendMessage(context.Background(), msg.Chat.ID, err.Error(), token)
+				continue
+			}
+			SendMessage(context.Background(), msg.Chat.ID, "Session ended.", token)
+
+		case "/help":
+			SendMessage(context.Background(), msg.Chat.ID,
+				"Commands:\n/start\n/end\n/help", token)
+
+		default:
+			// normal chat message
+			if err := RouteMessage(msg); err != nil {
+				log.Println("route error:", err)
 			}
 		}
 	}
-		return  nil
-	}
+	return nil
+}
 
-
-func RouteMessage(msg *Message) error{
+func RouteMessage(msg *Message) error {
 	mu.Lock()
 	defer mu.Unlock()
-	if msg.From.IsBot{
-		return  fmt.Errorf("not human ")
+	if msg.From.IsBot {
+		return fmt.Errorf("not human ")
 	}
-	s,ok:=userSessions[msg.From.ID]
-	if !ok || !s.active{
+	s, ok := userSessions[msg.From.ID]
+	if !ok || !s.active {
 		return fmt.Errorf(" something issue while sending message")
 	}
-	err:=SendMessage(context.Background(),int64(s.expert.ID),msg.Text,token)
-	if err!=nil{
-		return fmt.Errorf("something  is wrong while routing message to expert : %v",err)
+	err := SendMessage(context.Background(), int64(s.expert.ID), msg.Text, token)
+	if err != nil {
+		return fmt.Errorf("something  is wrong while routing message to expert : %v", err)
 	}
 
-e,ok:=expertSessions[msg.Chat.ID]
-if !ok || !e.active{
-	return fmt.Errorf("something issue while sending message")
-}
-err=SendMessage(context.Background(),int64(e.user.ID),msg.Text,token)
-if err!=nil{
-	return fmt.Errorf("something  is wrong while routing message to user : %v",err)
-}
-return nil
+	e, ok := expertSessions[msg.Chat.ID]
+	if !ok || !e.active {
+		return fmt.Errorf("something issue while sending message")
+	}
+	err = SendMessage(context.Background(), int64(e.user.ID), msg.Text, token)
+	if err != nil {
+		return fmt.Errorf("something  is wrong while routing message to user : %v", err)
+	}
+	return nil
 
 }

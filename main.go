@@ -1,4 +1,8 @@
 package main
+import (
+	"context"
+	"log"
+)
 /* 
 import (
 	"fmt"
@@ -121,4 +125,21 @@ fmt.Println(<-ch)
 
 }
  */
- 
+ func main(){
+	    ctx := context.Background()
+
+    updateChan := make(chan *Update, 100)
+	 go func() {
+        if err := GetUpdates(ctx, token, updateChan); err != nil {
+            log.Fatal("GetUpdates error:", err)
+        }
+    }()
+	    go func() {
+        if err := HandleMessages(updateChan); err != nil {
+            log.Fatal("HandleMessages error:", err)
+        }
+    }()
+	    select {}
+	
+
+ }	
