@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 )
+var groupId int64=1234
 
 type Session struct{
 ID    string

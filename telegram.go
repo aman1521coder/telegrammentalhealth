@@ -17,6 +17,7 @@ import (
 	"/start": handleStart,
 	"/end":   handleEnd,
 	"/help":  handleHelp,
+	"/confess" : handleConfess,
 } 
 	
 
@@ -235,4 +236,10 @@ err := EndSession(msg.From.ID)
 func handleHelp(msg *Message) {
 	SendMessage(context.Background(), msg.Chat.ID,
 				"Commands:\n/start\n/end\n/help", token)
+}
+func handleConfess(msg *Message) {
+	if IsDanger(msg.Text){
+		SendMessage(context.Background(),msg.From.ID,"please this contact us for any urgent case @Aman1515",token)
+	}
+	SendMessage(context.Background(),groupId,"your confession has been recorded we will get back to you soon",token)
 }
