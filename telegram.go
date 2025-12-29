@@ -7,18 +7,25 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 
 	//"errors"
 	"fmt"
 	//"os"
 )
+ var commands = map[string]func(*Message){
+	"/start": handleStart,
+	"/end":   handleEnd,
+	"/help":  handleHelp,
+} 
+	
 
 const (
 	SendMessageMethod = "sendMessage"
 	GetUpdatesMethod  = "getUpdates"
 )
 
-var token = "8411335043:AAHLWnflciTp11AaH9jj8zjCuO5luBCBTZA"
+var token = os.Getenv("TELEGRAM_BOT_TOKEN")
 type APIResponse struct {
 	OK          bool                `json:"ok"`
 	Result      json.RawMessage     `json:"result,omitempty"` // Unmarshal manually based on method
@@ -164,40 +171,18 @@ func HandleMessages(updateChan <-chan *Update) error {
 		}
 
 		msg := upd.Message
-
-		switch msg.Text {
-		case "/start":
-			s, err := StartSession(msg.From)
-			if err != nil {
-				SendMessage(context.Background(), msg.Chat.ID, err.Error(), token)
-				continue
-			}
-			SendMessage(context.Background(), msg.Chat.ID,
-				"Session started. You are now connected to an expert.", token)
-            SendMessage(context.Background(),s.expert.ChatID,"session started",token)
-			log.Printf("Session %s started: user=%d expert=%d",
-				s.ID, s.user.ID, s.expert.ID)
-
-		case "/end":
-			err := EndSession(msg.From.ID)
-			if err != nil {
-				SendMessage(context.Background(), msg.Chat.ID, err.Error(), token)
-				continue
-			}
-			SendMessage(context.Background(), msg.Chat.ID, "Session ended.", token)
-
-		case "/help":
-			SendMessage(context.Background(), msg.Chat.ID,
-				"Commands:\n/start\n/end\n/help", token)
-
-		default:
-			// normal chat message
-			if err := RouteMessage(msg); err != nil {
-				log.Println("route error:", err)
-			}
-		}
+		if handler, exists := commands[msg.Text]; exists {
+			handler(msg)
+		}else {
+            
+            if err := RouteMessage(msg); err != nil {
+                log.Println("route error:", err)
+            }
+	
 	}
-	return nil
+
+}
+	return  	nil
 }
 
 func RouteMessage(msg *Message) error {
@@ -208,6 +193,10 @@ func RouteMessage(msg *Message) error {
 	}
 	s, ok := userSessions[msg.From.ID]
 	if !ok || !s.active {
+		s,ok=expertSessions[msg.From.ID]
+		if !ok || !s.active {
+			return fmt.Errorf(" something issue while sending message")
+		}
 		return fmt.Errorf(" something issue while sending message")
 	}
 	err := SendMessage(context.Background(), s.expert.ChatID, msg.Text, token)
@@ -222,4 +211,28 @@ func RouteMessage(msg *Message) error {
     }
 	return nil
 
+}
+func handleStart(msg *Message)  {
+	s, err := StartSession(msg.From)
+			if err != nil {
+				SendMessage(context.Background(), msg.Chat.ID, err.Error(), token)
+				
+			}
+			SendMessage(context.Background(), msg.Chat.ID,
+				"Session started. You are now connected to an expert.", token)
+            SendMessage(context.Background(),s.expert.ChatID,"session started",token)
+			log.Printf("Session %s started: user=%d expert=%d",
+				s.ID, s.user.ID, s.expert.ID)
+}
+func handleEnd(msg *Message) {
+err := EndSession(msg.From.ID)
+			if err != nil {
+				SendMessage(context.Background(), msg.Chat.ID, err.Error(), token)
+				
+			}
+			SendMessage(context.Background(), msg.Chat.ID, "Session ended.", token)
+}
+func handleHelp(msg *Message) {
+	SendMessage(context.Background(), msg.Chat.ID,
+				"Commands:\n/start\n/end\n/help", token)
 }
